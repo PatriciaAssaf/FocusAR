@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>FocusAR MVP</title>
+    <script src="https://aframe.io/releases/1.3.0/aframe.min.js"></script>
+    <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
+</head>
+
+<body style="margin:0; overflow:hidden;">
+
+    <a-scene embedded arjs="sourceType: webcam;">
+
+        <a-entity
+            camera
+            cursor="fuse: false; rayOrigin: mouse"
+            raycaster="far: 100">
+        </a-entity>
+
+        <a-marker preset="hiro">
+
+            <!-- TIMER -->
+            <a-text
+                id="timer"
+                value="00:15"
+                position="0 1.45 0.2"
+                align="center"
+                color="#FFFFFF"
+                width="6">
+            </a-text>
+
+            <!-- ESTADO -->
+            <a-text
+                id="estado"
+                value="Toque para iniciar"
+                position="0 1.22 0.2"
+                align="center"
+                color="#00FFFF"
+                width="2">
+            </a-text>
+
+            <!-- DICA RESET -->
+            <a-text
+                id="dica"
+                value="Click duplo para resetar"
+                position="0 1.08 0.2"
+                align="center"
+                color="#AAAAAA"
+                width="1.4">
+            </a-text>
+
+            <!-- MODELO -->
+            <a-entity
+                gltf-model="url(FocusAR2teste.glb)"
+                scale="4 4 4"
+                position="0 1 0">
+            </a-entity>
+
+            <a-light type="ambient" color="#FFF"></a-light>
+            <a-light type="directional" intensity="1.5" position="-1 2 1"></a-light>
+
+        </a-marker>
+
+    </a-scene>
+
+    <script>
+        const scene = document.querySelector("a-scene");
+
+        scene.addEventListener("loaded", () => {
+
+            const timerTexto  = document.querySelector("#timer");
+            const estadoTexto = document.querySelector("#estado");
+            const dicaTexto   = document.querySelector("#dica");
+
+            let tempoInicial = 25 * 60; 
+            let tempo        = tempoInicial;
+            let intervalo    = null;
+            let audioCtx     = null;
+
+            // --- Áudio ---
+            function getAudioCtx() {
+                if (!audioCtx) {
+                    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                }
+                return audioCtx;
+            }
+
+            function tocarAlarme() {
+                const ctx   = getAudioCtx();
+                const bipes = [0, 0.4, 0.8];
+                bipes.forEach(delay => {
+                    const osc  = ctx.createOscillator();
+                    const gain = ctx.createGain();
+                    osc.connect(gain);
+                    gain.connect(ctx.destination);
+                    osc.type = "sine";
+                    osc.frequency.setValueAtTime(880, ctx.currentTime + delay);
+                    gain.gain.setValueAtTime(1, ctx.currentTime + delay);
+                    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + delay + 0.3);
+                    osc.start(ctx.currentTime + delay);
+                    osc.stop(ctx.currentTime  + delay + 0.3);
+                });
+            }
+
+            // --- Timer ---
+            function atualizarTimer() {
+                const minutos  = Math.floor(tempo / 60);
+                const segundos = tempo % 60;
+                timerTexto.setAttribute(
+                    "value",
+                    `${String(minutos).padStart(2, "0")}:${String(segundos).padStart(2, "0")}`
+                );
+            }
+
+            function resetarTimer() {
+                clearInterval(intervalo);
+                intervalo = null;
+                tempo     = tempoInicial;
+                atualizarTimer();
+                estadoTexto.setAttribute("value", "Toque para iniciar");
+                estadoTexto.setAttribute("color", "#00FFFF");
+                dicaTexto.setAttribute("value", "Click duplo para resetar");
+            }
+
+            function toggleTimer() {
+                getAudioCtx();
+
+                if (intervalo !== null) {
+                    // Pausar
+                    clearInterval(intervalo);
+                    intervalo = null;
+                    estadoTexto.setAttribute("value", "PAUSADO");
+                    estadoTexto.setAttribute("color", "#FFFF00");
+                } else {
+                    // Não reinicia se já finalizou — precisa de reset
+                    if (tempo === 0) return;
+
+                    // Iniciar / retomar
+                    estadoTexto.setAttribute("value", "FOCO");
+                    estadoTexto.setAttribute("color", "#00FFFF");
+                    dicaTexto.setAttribute("value", "Click duplo para resetar");
+
+                    intervalo = setInterval(() => {
+                        if (tempo > 0) {
+                            tempo--;
+                            atualizarTimer();
+                        } else {
+                            clearInterval(intervalo);
+                            intervalo = null;
+                            estadoTexto.setAttribute("value", "FINALIZADO!");
+                            estadoTexto.setAttribute("color", "#FF0000");
+                            dicaTexto.setAttribute("value", "Click duplo para resetar");
+                            tocarAlarme();
+                        }
+                    }, 1000);
+                }
+            }
+
+            atualizarTimer();
+
+            // --- Detecção de clique simples vs duplo ---
+            let cliques        = 0;
+            let timerClique    = null;
+
+            function aoClicar() {
+                getAudioCtx();
+                cliques++;
+
+                if (cliques === 1) {
+                    timerClique = setTimeout(() => {
+                        cliques = 0;
+                        toggleTimer(); // clique simples → iniciar/pausar
+                    }, 280);
+                } else if (cliques >= 2) {
+                    clearTimeout(timerClique);
+                    cliques = 0;
+                    resetarTimer(); // duplo clique → resetar
+                }
+            }
+
+            document.addEventListener("click", aoClicar);
+            document.addEventListener("touchstart", (e) => {
+                e.preventDefault();
+                aoClicar();
+            }, { passive: false });
+
+        });
+    </script>
+
+</body>
+</html>
